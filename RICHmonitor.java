@@ -17,6 +17,7 @@ import java.awt.Graphics2D;
 import java.awt.Point;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Line2D;
+import java.util.Arrays;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
@@ -42,8 +43,8 @@ public class RICHmonitor  extends DetectorMonitor {
         this.setDetectorTabNames("PMT Window","Occupancies and spectra","RICH TDC");//declare tabs in the RICH GUI
         this.init(false);
         
-        /*this.getCcdb().setVariation("default");
-        this.getCcdb().init(Arrays.asList(new String[]{"/calibration/rich/time_offset"}));*/
+        this.getCcdb().setVariation("default");
+        this.getCcdb().init(Arrays.asList(new String[]{"/calibration/rich/time_offset"}));
 
     }
 
@@ -213,34 +214,15 @@ public class RICHmonitor  extends DetectorMonitor {
 
     }
 
-    public void fillTile(long comp,long layer) {
+    public void fillTile(int Ham_ID,long layer) {
         
-        int Ham_ID=0;
+        //int Ham_ID=0;
         int row = 0;
         int NumofTiles = 5;
         int tempLayer = 0;
         int count = 2;
         int[] firstTile = {2,5,8,11,15,19,23,28,33,38,44,50,56,63,70,77,85,93,101,110,119,128,138};
-        
-        int tempComp= (int) (comp);//comp has to be casted as an integer or else errors occur
-        int chan2pix[] = {60, 58, 59, 57, 52, 50, 51, 49, 44, 42, 43, 41, 36, 34, 35, 33, 28, 26, 27, 25, 20, 18, 19, 17, 12, 10, 11, 9, 4, 2, 3, 1, 5, 7, 6, 8, 13, 15, 14, 16, 21, 23, 22, 24, 29, 31, 30, 32, 37, 39, 38, 40, 45, 47, 46, 48, 53, 55, 54, 56, 61, 63, 62, 64};
-
-        if (tempComp < 65) {
-            Ham_ID = chan2pix[tempComp-1];
-            //System.out.println("Hamamatsu ID: " + Ham_ID);
-            }
-        
-        else if (tempComp > 64 && tempComp < 129) {
-            Ham_ID = chan2pix[tempComp-65]+64;
-            //System.out.println("Hamamatsu ID: " + Ham_ID);
-            }
-        
-        else if (tempComp > 128 && comp < 193) {
-            Ham_ID = chan2pix[tempComp-129]+128;
-            //System.out.println("Hamamatsu ID: " + Ham_ID);
-            }
              
-        
         while(tempLayer != layer) {
             row++;
 
@@ -534,12 +516,8 @@ public class RICHmonitor  extends DetectorMonitor {
 
     else {
         this.getDataGroup().getItem(0,0,0).getH2F("RichScaler").fill(x*1.0,y*1.0);
-    }
-        
-    /*int runNumber    = head.getInt("run", 0);
-       IndexedTable  rfConfig =  this.getCcdb().getConstants(runNumber,"/calibration/rich/time_offset:11620:default:2021-05-31_12-20-08");
-       int stat = rfConfig.getIntValue("offset",1,1,1); */  
-       
+    } 
+    
     }//end fillTile Method
 
 
@@ -616,28 +594,59 @@ public class RICHmonitor  extends DetectorMonitor {
             }
         }
         
+        
+        
         if(event.hasBank("RICH::tdc")==true) {
             Map<Integer, Integer> tdcMap0 = new HashMap<>();
             Map<Integer, Integer> tdcMap1 = new HashMap<>();
             
             DataBank  bank = event.getBank("RICH::tdc");
             int rows = bank.rows();
+            
+            int runNumber = 11620;
+            int sector_table=4;
+                        
+            IndexedTable timeOffset = this.getCcdb().getConstants(runNumber,"/calibration/rich/time_offset");
+            
+            for (int PMT=1; PMT<392; PMT++) {
+                for (int Pixel=1; Pixel<65; Pixel++) {
+                    double time_offset = timeOffset.getDoubleValue("offset", sector_table, PMT, Pixel);
+                    //System.out.println("For PMT: " + PMT + " with Pixel: " + Pixel + " Time Offset: " + time_offset);
+                }
+            }
+            
             for(int i = 0; i < rows; i++) {
-                int     sector = bank.getByte("sector",i);
-                int  layerbyte = bank.getByte("layer",i);
-                long     layer = layerbyte & 0xFF;
-                long      comp = bank.getShort("component",i);
-                long     pmt   = comp/64;
-                int        tdc = bank.getInt("TDC",i);
-                int  orderbyte = bank.getByte("order",i); // order specifies left-right for ADC
-                
+                int     sector = bank.getByte("sector",i);//4 by default (only 1 RICH)
+                int  layerbyte = bank.getByte("layer",i);//byte variable, ranges from -127 to 127
+                long     layer = layerbyte & 0xFF;//conversion of byte to long variable, ranges from 1 to 138 (Tile Number)
+                long      comp = bank.getShort("component",i);//short variable, comp is the MAROC ID shifted by 1 (ranges 1-192)
+                long     pmt   = comp/64;//determines which PMT in tile
+                int        tdc = bank.getInt("TDC",i);//TDC value
+                int  orderbyte = bank.getByte("order",i); // order specifies leading or trailing edge
+
                 if(tdc>0) {
                         this.getDataGroup().getItem(0,0,0).getH2F("occTDC").fill(comp,layer);
-                        
-                        /*IndexedTable richStatus = this.getCcdb().getConstants(run,"/calibration/rich/time_offset");
-                        int time_offset = richStatus.getIntValue("time_offset", sector, layerbyte, (int) comp);*/
-                        
-                        fillTile(comp,layer);
+
+                        int Ham_ID=0;
+                        int tempComp= (int) (comp);//comp has to be casted as an integer or else errors occur
+                        int chan2pix[] = {60, 58, 59, 57, 52, 50, 51, 49, 44, 42, 43, 41, 36, 34, 35, 33, 28, 26, 27, 25, 20, 18, 19, 17, 12, 10, 11, 9, 4, 2, 3, 1, 5, 7, 6, 8, 13, 15, 14, 16, 21, 23, 22, 24, 29, 31, 30, 32, 37, 39, 38, 40, 45, 47, 46, 48, 53, 55, 54, 56, 61, 63, 62, 64};
+
+                        if (tempComp < 65) {
+                        Ham_ID = chan2pix[tempComp-1];
+                        //System.out.println("Hamamatsu ID: " + Ham_ID);
+                        }
+        
+                        else if (tempComp > 64 && tempComp < 129) {
+                        Ham_ID = chan2pix[tempComp-65]+64;
+                        //System.out.println("Hamamatsu ID: " + Ham_ID);
+                        }
+        
+                        else if (tempComp > 128 && comp < 193) {
+                        Ham_ID = chan2pix[tempComp-129]+128;
+                        //System.out.println("Hamamatsu ID: " + Ham_ID);
+                        }
+
+                        fillTile(Ham_ID,layer);
                         
                         if(orderbyte == 1) this.getDataGroup().getItem(0,0,0).getH2F("tdc_leading_edge").fill(tdc, layer*3 + pmt);
                         if(orderbyte == 0) this.getDataGroup().getItem(0,0,0).getH2F("tdc_trailing_edge").fill(tdc, layer*3 + pmt);
